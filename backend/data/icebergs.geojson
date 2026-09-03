@@ -1,0 +1,221 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "berg_id": "BERG_001",
+        "name": "B-15-A",
+        "length_m": 2621,
+        "drift_speed_knots": 1.83,
+        "heading_deg": 179,
+        "safety_radius_km": 3.6
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          76.1246,
+          -69.3775
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "berg_id": "BERG_002",
+        "name": "C-22-B",
+        "length_m": 2131,
+        "drift_speed_knots": 0.85,
+        "heading_deg": 224,
+        "safety_radius_km": 5.8
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.4558,
+          -69.234
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "berg_id": "BERG_003",
+        "name": "B-15-C",
+        "length_m": 1211,
+        "drift_speed_knots": 2.39,
+        "heading_deg": 3,
+        "safety_radius_km": 4.7
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          76.2644,
+          -69.2289
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "berg_id": "BERG_004",
+        "name": "D-19-D",
+        "length_m": 2705,
+        "drift_speed_knots": 1.56,
+        "heading_deg": 9,
+        "safety_radius_km": 3.4
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          76.1851,
+          -69.0438
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "berg_id": "BERG_005",
+        "name": "B-15-E",
+        "length_m": 2545,
+        "drift_speed_knots": 1.73,
+        "heading_deg": 294,
+        "safety_radius_km": 3.8
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          76.1098,
+          -69.1355
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "berg_id": "BERG_006",
+        "name": "D-19-F",
+        "length_m": 764,
+        "drift_speed_knots": 1.07,
+        "heading_deg": 63,
+        "safety_radius_km": 4.7
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          76.0965,
+          -68.4469
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "berg_id": "BERG_007",
+        "name": "D-19-G",
+        "length_m": 2822,
+        "drift_speed_knots": 1.16,
+        "heading_deg": 49,
+        "safety_radius_km": 3.2
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.4507,
+          -68.5889
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "berg_id": "BERG_008",
+        "name": "D-19-H",
+        "length_m": 1680,
+        "drift_speed_knots": 1.89,
+        "heading_deg": 98,
+        "safety_radius_km": 4.1
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.6938,
+          -68.8366
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "berg_id": "BERG_009",
+        "name": "A-76-I",
+        "length_m": 675,
+        "drift_speed_knots": 2.83,
+        "heading_deg": 103,
+        "safety_radius_km": 4.3
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          76.5677,
+          -68.3449
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "berg_id": "BERG_010",
+        "name": "D-19-J",
+        "length_m": 2562,
+        "drift_speed_knots": 1.48,
+        "heading_deg": 257,
+        "safety_radius_km": 4.9
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          76.6655,
+          -68.5265
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "berg_id": "BERG_011",
+        "name": "B-15-K",
+        "length_m": 605,
+        "drift_speed_knots": 2.95,
+        "heading_deg": 358,
+        "safety_radius_km": 3.2
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          76.255,
+          -68.5071
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "berg_id": "BERG_012",
+        "name": "D-19-L",
+        "length_m": 2450,
+        "drift_speed_knots": 1.45,
+        "heading_deg": 30,
+        "safety_radius_km": 3.3
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          76.1814,
+          -69.3226
+        ]
+      }
+    }
+  ]
+}

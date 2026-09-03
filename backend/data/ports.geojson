@@ -1,0 +1,33 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "point_type": "START",
+        "name": "Open Ocean Approach"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.1,
+          -68.2
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "point_type": "DESTINATION",
+        "name": "Bharati Station"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          76.9,
+          -69.4
+        ]
+      }
+    }
+  ]
+}

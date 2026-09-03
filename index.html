@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Antarctic Nav AI - Decision Support System</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; background-color: #0f172a; color: white; display: flex; flex-direction: column; height: 100vh; }
+        header { background: #1e293b; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
+        
+        /* Telemetry Cards Bar */
+        .metrics-bar { display: flex; gap: 16px; background: #0f172a; padding: 12px 24px; border-bottom: 1px solid #334155; }
+        .card { background: #1e293b; padding: 10px 16px; borderRadius: 8px; border: 1px solid #334155; min-width: 140px; }
+        .card-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600; }
+        .card-value { font-size: 18px; font-weight: bold; color: #38bdf8; margin-top: 2px; }
+        
+        /* Time Controls Bar */
+        .control-bar { background: #1e293b; padding: 10px 24px; display: flex; align-items: center; gap: 20px; font-size: 14px; border-bottom: 1px solid #334155; }
+        #map { flex: 1; width: 100%; }
+        button { background: #2563eb; color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 6px; cursor: pointer; }
+        button:hover { background: #1d4ed8; }
+    </style>
+</head>
+<body>
+    <header>
+        <div>
+            <h2 style="margin:0; font-size:20px;">🧊 Antarctic Nav AI - Decision Support System</h2>
+            <small style="color:#94a3b8;">Real-time Sea-Ice Density Grid & Iceberg Trajectory Engine</small>
+        </div>
+        <button onclick="calculateRoute()">🚀 Calculate Safe Route</button>
+    </header>
+
+    <!-- Telemetry Cards -->
+    <div class="metrics-bar">
+        <div class="card">
+            <div class="card-label">Distance</div>
+            <div class="card-value" id="val-dist">-- NM</div>
+        </div>
+        <div class="card">
+            <div class="card-label">Est. Voyage Time</div>
+            <div class="card-value" id="val-time">-- hrs</div>
+        </div>
+        <div class="card">
+            <div class="card-label">Avg Ice Hazard</div>
+            <div class="card-value" id="val-hazard">-- %</div>
+        </div>
+        <div class="card">
+            <div class="card-label">Fuel Optimized</div>
+            <div class="card-value" id="val-fuel" style="color: #22c55e;">-- %</div>
+        </div>
+    </div>
+
+    <!-- Interactive Time Slider -->
+    <div class="control-bar">
+        <label><strong>Iceberg Trajectory Simulation:</strong></label>
+        <input type="range" id="timeSlider" min="0" max="24" step="6" value="0" onchange="updateDrift(this.value)" style="width: 200px;">
+        <span id="sliderVal" style="color: #a855f7; font-weight: bold;">+0 Hours (Live)</span>
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+        const API_URL = 'http://127.0.0.1:8000';
+        const map = L.map('map').setView([-69.0, 76.0], 7);
+        let routeLayer = null;
+        let icebergLayer = null;
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap &copy; CARTO'
+        }).addTo(map);
+
+        function loadMapData() {
+            fetch(`${API_URL}/api/data`)
+                .then(res => res.json())
+                .then(data => {
+                    const { ice_grid, icebergs, ports } = data;
+
+                    // Ice Grid
+                    L.geoJSON(ice_grid, {
+                        style: (f) => {
+                            const c = f.properties.sea_ice_concentration;
+                            return { color: c > 75 ? '#ef4444' : c > 50 ? '#f97316' : c > 25 ? '#eab308' : '#3b82f6', weight: 1, fillOpacity: c / 150 };
+                        }
+                    }).addTo(map);
+
+                    // Icebergs Layer
+                    renderIcebergs(icebergs);
+
+                    // Ports
+                    L.geoJSON(ports, {
+                        pointToLayer: (f, latlng) => L.circleMarker(latlng, {
+                            radius: 10, fillColor: f.properties.point_type === 'START' ? '#22c55e' : '#ec4899',
+                            color: '#ffffff', weight: 2, fillOpacity: 1
+                        }).bindPopup(`<b>${f.properties.name}</b>`)
+                    }).addTo(map);
+                });
+        }
+
+        function renderIcebergs(icebergsGeoJson) {
+            if (icebergLayer) map.removeLayer(icebergLayer);
+            icebergLayer = L.geoJSON(icebergsGeoJson, {
+                pointToLayer: (f, latlng) => L.circleMarker(latlng, {
+                    radius: 8, fillColor: '#a855f7', color: '#ffffff', weight: 2, fillOpacity: 0.9
+                }).bindPopup(`<b>${f.properties.name}</b><br>Speed: ${f.properties.drift_speed_knots} kts`)
+            }).addTo(map);
+        }
+
+        function updateDrift(hours) {
+            document.getElementById('sliderVal').innerText = `+${hours} Hours`;
+            fetch(`${API_URL}/api/predict-drift?hours=${hours}`, { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    renderIcebergs(data.updated_icebergs);
+                    if (routeLayer) calculateRoute(); // Recalculate route live as bergs move
+                });
+        }
+
+        function calculateRoute() {
+            fetch(`${API_URL}/api/route`, { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    const coords = data.route.map(pt => [pt[1], pt[0]]);
+                    if (routeLayer) map.removeLayer(routeLayer);
+                    
+                    routeLayer = L.polyline(coords, { color: '#22c55e', weight: 5, dashArray: '10, 10' }).addTo(map);
+                    map.fitBounds(routeLayer.getBounds());
+
+                    // Update UI Telemetry Cards
+                    const m = data.metrics;
+                    document.getElementById('val-dist').innerText = `${m.distance_nm} NM`;
+                    document.getElementById('val-time').innerText = `${m.voyage_hours} hrs`;
+                    document.getElementById('val-hazard').innerText = `${m.avg_ice_density}%`;
+                    document.getElementById('val-fuel').innerText = `+${m.fuel_savings_pct}%`;
+                });
+        }
+
+        loadMapData();
+    </script>
+</body>
+</html>
