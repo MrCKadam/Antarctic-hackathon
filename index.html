@@ -28,7 +28,6 @@
         body, html { height: 100%; width: 100%; background-color: var(--bg-dark); color: var(--text-main); overflow: hidden; display: flex; flex-direction: column; }
 
         /* --- SATELLITE TILE CONTRAST FILTER --- */
-        /* Dims bright white ice while retaining terrain texture so neon overlays pop */
         #map .leaflet-tile-pane {
             filter: brightness(0.55) contrast(1.35) saturate(1.1);
         }
@@ -49,6 +48,11 @@
         .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.1rem; }
         .logo i { color: var(--accent-cyan); font-size: 1.3rem; }
         .team-tag { font-size: 0.75rem; background: rgba(0, 240, 255, 0.15); color: var(--accent-cyan); border: 1px solid var(--panel-border); padding: 2px 8px; border-radius: 4px; }
+        
+        .header-center { display: flex; align-items: center; gap: 20px; font-size: 0.8rem; }
+        .stat-badge { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); }
+        .stat-badge span { color: var(--accent-cyan); font-weight: 700; }
+
         .header-right { display: flex; align-items: center; gap: 18px; font-size: 0.85rem; }
         .clock-display { color: var(--accent-cyan); font-family: monospace; font-size: 0.9rem; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 4px; border: 1px solid var(--panel-border); }
         .status-badge { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--accent-green); }
@@ -127,6 +131,11 @@
 
         .tab-content { flex: 1; overflow-y: auto; padding: 16px; display: none; }
         .tab-content.active { display: block; }
+
+        /* RISK FILTER BUTTONS */
+        .filter-bar { display: flex; gap: 6px; margin-bottom: 12px; }
+        .filter-btn { flex: 1; padding: 6px; font-size: 0.72rem; font-weight: 700; border-radius: 4px; border: 1px solid var(--panel-border); background: rgba(255,255,255,0.03); color: var(--text-sub); cursor: pointer; }
+        .filter-btn.active { border-color: var(--accent-cyan); color: var(--accent-cyan); background: rgba(0, 240, 255, 0.15); }
 
         .iceberg-card {
             background: rgba(15, 23, 42, 0.7);
@@ -214,11 +223,18 @@
             </div>
             <span class="team-tag">Polar AI</span>
         </div>
+
+        <div class="header-center">
+            <div class="stat-badge">Total Tracked: <span id="stat-total">--</span></div>
+            <div class="stat-badge">High Risk: <span id="stat-high-risk" style="color:var(--accent-red)">--</span></div>
+            <div class="stat-badge">Avg Speed: <span id="stat-avg-speed">--</span></div>
+        </div>
+
         <div class="header-right">
             <div class="clock-display" id="utc-clock">00:00:00 UTC</div>
             <div class="status-badge">
                 <div class="status-dot"></div>
-                <span>System Live</span>
+                <span>API Live</span>
             </div>
         </div>
     </header>
@@ -228,12 +244,10 @@
         <div class="map-section">
             <div id="map"></div>
 
-            <div class="alerts-feed">
+            <div class="alerts-feed" id="alerts-feed">
                 <div class="alerts-header">
                     <i class="fa-solid fa-triangle-exclamation"></i> Live Navigation Alerts
                 </div>
-                <div class="alert-item">⚠️ Iceberg <b>IB-042</b> entering shipping lane — ETA 14h</div>
-                <div class="alert-item">🧊 Rapid sea-ice accumulation in Neumayer Channel</div>
             </div>
 
             <div class="slider-overlay">
@@ -250,6 +264,12 @@
             </div>
 
             <div id="tab-icebergs" class="tab-content active">
+                <div class="filter-bar">
+                    <button class="filter-btn active" onclick="filterIcebergs('', this)">ALL</button>
+                    <button class="filter-btn" onclick="filterIcebergs('red', this)">RED</button>
+                    <button class="filter-btn" onclick="filterIcebergs('yellow', this)">YELLOW</button>
+                    <button class="filter-btn" onclick="filterIcebergs('green', this)">GREEN</button>
+                </div>
                 <div id="iceberg-list-container"></div>
             </div>
 
@@ -273,30 +293,27 @@
                 <div class="route-results" id="route-results">
                     <div class="res-item"><span>Total Distance:</span> <span id="res-dist">-- NM</span></div>
                     <div class="res-item"><span>Est. Voyage Time:</span> <span id="res-time">-- hrs</span></div>
-                    <div class="res-item"><span>Hazard Zones Avoided:</span> <span id="res-avoided">3 Zones</span></div>
+                    <div class="res-item"><span>Hazard Zones Avoided:</span> <span id="res-avoided">--</span></div>
                 </div>
             </div>
         </div>
     </div>
 
     <footer>
-        <div>Status: Active Data Pipelines</div>
+        <div>Status: Connected to FastAPI Backend</div>
         <div>Data: NSIDC, Copernicus Marine Service, GEBCO</div>
     </footer>
 
     <script>
+        const API_BASE_URL = 'http://127.0.0.1:8000';
+
         let map, icebergLayer, driftPathLayer, routeLayer;
         let currentHours = 0;
+        let icebergsData = [];
+        let activeRiskFilter = '';
 
-        const icebergsData = [
-            { id: "IB-042", lat: -64.9, lng: -63.6, size: "14.2 km²", speed: 1.8, dir: "NW", risk: 85, level: "red" },
-            { id: "IB-108", lat: -65.3, lng: -64.2, size: "6.5 km²", speed: 1.1, dir: "W", risk: 52, level: "yellow" },
-            { id: "IB-201", lat: -65.1, lng: -62.8, size: "2.1 km²", speed: 0.8, dir: "SW", risk: 24, level: "green" },
-            { id: "IB-315", lat: -65.7, lng: -63.9, size: "18.9 km²", speed: 2.1, dir: "NW", risk: 91, level: "red" }
-        ];
-
-        function initMap() {
-            // Restrict panning boundaries and set minimum zoom limit
+        async function initMap() {
+            // World bounds & single frame configuration (No tile repetition)
             map = L.map('map', { 
                 zoomControl: false,
                 minZoom: 2,
@@ -304,7 +321,6 @@
                 maxBoundsViscosity: 1.0
             }).setView([-65.2, -63.5], 7);
 
-            // noWrap: true disables infinite horizontal tile repetition
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri',
                 maxZoom: 12,
@@ -315,13 +331,16 @@
 
             L.control.zoom({ position: 'topright' }).addTo(map);
 
-                driftPathLayer = L.layerGroup().addTo(map);
-                routeLayer = L.layerGroup().addTo(map);
-                icebergLayer = L.layerGroup().addTo(map);
+            driftPathLayer = L.layerGroup().addTo(map);
+            routeLayer = L.layerGroup().addTo(map);
+            icebergLayer = L.layerGroup().addTo(map);
 
-                renderIcebergs();
-                populateIcebergList();
-                startClock();
+            startClock();
+
+            // Fetch live API data on load
+            await loadStats();
+            await loadAlerts();
+            await loadIcebergs();
         }
 
         function startClock() {
@@ -331,33 +350,108 @@
             }, 1000);
         }
 
+        // GET /stats
+        async function loadStats() {
+            try {
+                const res = await fetch(`${API_BASE_URL}/stats`);
+                if (!res.ok) return;
+                const stats = await res.json();
+                
+                document.getElementById('stat-total').innerText = stats.total_icebergs;
+                document.getElementById('stat-high-risk').innerText = stats.high_risk_count;
+                document.getElementById('stat-avg-speed').innerText = `${stats.avg_speed_knots} kts`;
+            } catch (err) {
+                console.error("Error fetching stats:", err);
+            }
+        }
+
+        // GET /alerts
+        async function loadAlerts() {
+            try {
+                const res = await fetch(`${API_BASE_URL}/alerts`);
+                if (!res.ok) return;
+                const data = await res.json();
+
+                const container = document.getElementById('alerts-feed');
+                container.innerHTML = `
+                    <div class="alerts-header">
+                        <i class="fa-solid fa-triangle-exclamation"></i> Live Navigation Alerts
+                    </div>
+                `;
+
+                data.alerts.forEach(alert => {
+                    const item = document.createElement('div');
+                    item.className = 'alert-item';
+                    const icon = alert.severity === 'CRITICAL' ? '⚠️' : '🧊';
+                    item.innerHTML = `${icon} ${alert.message}`;
+                    container.appendChild(item);
+                });
+            } catch (err) {
+                console.error("Error fetching alerts:", err);
+            }
+        }
+
+        // GET /icebergs (with optional ?risk= filter)
+        async function loadIcebergs(risk = '') {
+            try {
+                const url = risk ? `${API_BASE_URL}/icebergs?risk=${risk}` : `${API_BASE_URL}/icebergs`;
+                const res = await fetch(url);
+                if (!res.ok) return;
+                icebergsData = await res.json();
+                
+                renderIcebergs();
+                populateIcebergList();
+            } catch (err) {
+                console.error("Error loading icebergs:", err);
+            }
+        }
+
+        // GET /icebergs/{id}
+        async function selectIceberg(id) {
+            try {
+                const res = await fetch(`${API_BASE_URL}/icebergs/${id}`);
+                if (!res.ok) return;
+                const berg = await res.json();
+                
+                map.flyTo([berg.lat, berg.lng], 8, { duration: 1 });
+            } catch (err) {
+                console.error("Error fetching single iceberg detail:", err);
+            }
+        }
+
+        function filterIcebergs(riskLevel, btn) {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            activeRiskFilter = riskLevel;
+            loadIcebergs(riskLevel);
+        }
+
         function renderIcebergs() {
             icebergLayer.clearLayers();
             driftPathLayer.clearLayers();
 
             icebergsData.forEach(berg => {
-                const latShift = (currentHours * 0.008) * (berg.dir.includes("N") ? 1 : -1);
-                const lngShift = (currentHours * 0.012) * (berg.dir.includes("W") ? -1 : 1);
+                const latShift = (currentHours * 0.008) * (berg.direction.includes("N") ? 1 : -1);
+                const lngShift = (currentHours * 0.012) * (berg.direction.includes("W") ? -1 : 1);
                 const currLat = berg.lat + latShift;
                 const currLng = berg.lng + lngShift;
 
                 const colorMap = { green: "#00ff66", yellow: "#ffcc00", red: "#ff0055" };
-                const color = colorMap[berg.level];
+                const color = colorMap[berg.risk_level] || "#00f0ff";
 
-                // Projected Drift Casing (Black Underline)
-                const futureLat = berg.lat + (48 * 0.008) * (berg.dir.includes("N") ? 1 : -1);
-                const futureLng = berg.lng + (48 * 0.012) * (berg.dir.includes("W") ? -1 : 1);
+                // High-visibility dual casing drift paths
+                const futureLat = berg.lat + (48 * 0.008) * (berg.direction.includes("N") ? 1 : -1);
+                const futureLng = berg.lng + (48 * 0.012) * (berg.direction.includes("W") ? -1 : 1);
                 
                 L.polyline([[berg.lat, berg.lng], [futureLat, futureLng]], {
                     color: '#000000', weight: 5, opacity: 0.9
                 }).addTo(driftPathLayer);
 
-                // Projected Drift Line (Neon Colored Top)
                 L.polyline([[berg.lat, berg.lng], [futureLat, futureLng]], {
                     color: color, weight: 2.5, dashArray: '4, 6', opacity: 1.0
                 }).addTo(driftPathLayer);
 
-                // Iceberg Circle Marker with Heavy Black Border
+                // Iceberg Circle Marker with heavy black outline border
                 const marker = L.circleMarker([currLat, currLng], {
                     radius: 9,
                     fillColor: color,
@@ -369,10 +463,10 @@
                 marker.bindPopup(`
                     <div class="popup-card">
                         <h4>${berg.id} Details</h4>
-                        <div class="popup-row"><span>Risk Score:</span> <b style="color:${color}">${berg.risk}% (${berg.level.toUpperCase()})</b></div>
+                        <div class="popup-row"><span>Risk Score:</span> <b style="color:${color}">${berg.risk_score}% (${berg.risk_level.toUpperCase()})</b></div>
                         <div class="popup-row"><span>Position:</span> <span>${currLat.toFixed(2)}, ${currLng.toFixed(2)}</span></div>
-                        <div class="popup-row"><span>Size:</span> <span>${berg.size}</span></div>
-                        <div class="popup-row"><span>Drift Speed:</span> <span>${berg.speed} knots (${berg.dir})</span></div>
+                        <div class="popup-row"><span>Size:</span> <span>${berg.size_km2} km²</span></div>
+                        <div class="popup-row"><span>Speed:</span> <span>${berg.speed_knots} kts (${berg.direction})</span></div>
                     </div>
                 `);
 
@@ -387,23 +481,19 @@
             icebergsData.forEach(berg => {
                 const card = document.createElement('div');
                 card.className = 'iceberg-card';
-                card.onclick = () => focusIceberg(berg.lat, berg.lng);
+                card.onclick = () => selectIceberg(berg.id);
                 card.innerHTML = `
                     <div class="berg-header">
                         <span class="berg-id">${berg.id}</span>
-                        <span class="badge badge-${berg.level}">${berg.level} (${berg.risk}%)</span>
+                        <span class="badge badge-${berg.risk_level}">${berg.risk_level} (${berg.risk_score}%)</span>
                     </div>
                     <div class="berg-details">
-                        <span>Size: ${berg.size}</span>
-                        <span>Speed: ${berg.speed} kts</span>
+                        <span>Size: ${berg.size_km2} km²</span>
+                        <span>Speed: ${berg.speed_knots} kts</span>
                     </div>
                 `;
                 container.appendChild(card);
             });
-        }
-
-        function focusIceberg(lat, lng) {
-            map.flyTo([lat, lng], 8, { duration: 1 });
         }
 
         function switchTab(tabName) {
@@ -425,22 +515,40 @@
             renderIcebergs();
         });
 
+        // POST /route
         async function calculateRoute() {
             routeLayer.clearLayers();
-            const routePath = [
-                [-64.77, -64.05], [-65.1, -64.5], [-65.8, -65.2], [-66.5, -66.8], [-67.57, -68.12]
-            ];
 
-            // Black casing line underneath
-            L.polyline(routePath, { color: '#000000', weight: 8, opacity: 0.9 }).addTo(routeLayer);
-            
-            // Neon cyan line on top
-            const polyline = L.polyline(routePath, { color: '#00f0ff', weight: 4, opacity: 1.0 }).addTo(routeLayer);
-            map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
+            const payload = {
+                start: { lat: -64.77, lng: -64.05 },
+                end: { lat: -67.57, lng: -68.12 }
+            };
 
-            document.getElementById('route-results').style.display = 'block';
-            document.getElementById('res-dist').innerText = '238.4 NM';
-            document.getElementById('res-time').innerText = '18.2 hrs';
+            try {
+                const res = await fetch(`${API_BASE_URL}/route`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!res.ok) throw new Error('Route calculation failed');
+                const data = await res.json();
+
+                // Render Route Line with high contrast casing
+                L.polyline(data.path, { color: '#000000', weight: 8, opacity: 0.9 }).addTo(routeLayer);
+                const polyline = L.polyline(data.path, { color: '#00f0ff', weight: 4, opacity: 1.0 }).addTo(routeLayer);
+                
+                map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
+
+                // Display Results
+                document.getElementById('route-results').style.display = 'block';
+                document.getElementById('res-dist').innerText = `${data.distance_nm} NM`;
+                document.getElementById('res-time').innerText = `${data.est_hours} hrs`;
+                document.getElementById('res-avoided').innerText = `${data.hazards_avoided} Zones`;
+
+            } catch (err) {
+                console.error("Error calculating route:", err);
+            }
         }
 
         window.onload = initMap;
