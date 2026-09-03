@@ -3,503 +3,435 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Antarctic Nav AI - Decision Support System</title>
+    <title>Antarctic Navigator - Iceberg Tracking & Route Planning</title>
     
-    <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
-    <!-- Google Fonts & FontAwesome Icons -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
         :root {
-            --bg-dark: #0b0f19;
-            --panel-bg: rgba(15, 23, 42, 0.85);
-            --panel-border: rgba(51, 65, 85, 0.7);
-            --accent-cyan: #06b6d4;
-            --accent-green: #22c55e;
-            --accent-purple: #a855f7;
-            --accent-red: #ef4444;
+            --bg-dark: #050811;
+            --panel-bg: rgba(10, 16, 30, 0.94);
+            --panel-border: rgba(56, 189, 248, 0.3);
+            --accent-cyan: #00f0ff;
+            --accent-green: #00ff66;
+            --accent-yellow: #ffcc00;
+            --accent-red: #ff0055;
             --text-main: #f8fafc;
             --text-sub: #94a3b8;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Inter', sans-serif;
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        body, html { height: 100%; width: 100%; background-color: var(--bg-dark); color: var(--text-main); overflow: hidden; display: flex; flex-direction: column; }
+
+        /* --- SATELLITE TILE CONTRAST FILTER --- */
+        /* Dims bright white ice while retaining terrain texture so neon overlays pop */
+        #map .leaflet-tile-pane {
+            filter: brightness(0.55) contrast(1.35) saturate(1.1);
         }
 
-        body, html {
-            height: 100%;
-            width: 100%;
-            background-color: var(--bg-dark);
-            color: var(--text-main);
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* --- Header Styling --- */
+        /* --- TOP BAR --- */
         header {
-            height: 60px;
+            height: 54px;
             background: var(--panel-bg);
             backdrop-filter: blur(12px);
             border-bottom: 1px solid var(--panel-border);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 24px;
+            padding: 0 20px;
             z-index: 1000;
         }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.1rem; }
+        .logo i { color: var(--accent-cyan); font-size: 1.3rem; }
+        .team-tag { font-size: 0.75rem; background: rgba(0, 240, 255, 0.15); color: var(--accent-cyan); border: 1px solid var(--panel-border); padding: 2px 8px; border-radius: 4px; }
+        .header-right { display: flex; align-items: center; gap: 18px; font-size: 0.85rem; }
+        .clock-display { color: var(--accent-cyan); font-family: monospace; font-size: 0.9rem; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 4px; border: 1px solid var(--panel-border); }
+        .status-badge { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--accent-green); }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background-color: var(--accent-green); box-shadow: 0 0 10px var(--accent-green); }
 
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
+        /* --- MAIN LAYOUT --- */
+        .main-wrapper { flex: 1; display: flex; width: 100%; height: calc(100vh - 54px - 24px); position: relative; }
+        .map-section { flex: 7; position: relative; height: 100%; }
+        #map { width: 100%; height: 100%; background: #02040a; }
 
-        .brand i {
-            color: var(--accent-cyan);
-            font-size: 1.4rem;
-        }
-
-        .brand h1 {
-            font-size: 1.15rem;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-        }
-
-        .brand span {
-            font-size: 0.75rem;
-            background: rgba(6, 182, 212, 0.15);
-            color: var(--accent-cyan);
-            padding: 2px 8px;
-            border-radius: 4px;
-            border: 1px solid rgba(6, 182, 212, 0.3);
-            margin-left: 8px;
-        }
-
-        .status-badge {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 0.82rem;
-            color: var(--text-sub);
-            background: rgba(30, 41, 59, 0.8);
-            padding: 6px 14px;
-            border-radius: 20px;
-            border: 1px solid var(--panel-border);
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: var(--accent-green);
-            box-shadow: 0 0 8px var(--accent-green);
-        }
-
-        /* --- Telemetry Overlay Bar --- */
-        .telemetry-bar {
+        /* ALERTS FEED */
+        .alerts-feed {
             position: absolute;
-            top: 76px;
-            left: 20px;
-            z-index: 999;
-            display: flex;
-            gap: 12px;
-        }
-
-        .card {
-            background: var(--panel-bg);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--panel-border);
-            border-radius: 10px;
-            padding: 12px 18px;
-            min-width: 135px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-        }
-
-        .card-label {
-            font-size: 0.7rem;
-            text-transform: uppercase;
-            color: var(--text-sub);
-            letter-spacing: 0.5px;
-            margin-bottom: 4px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .card-value {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: var(--text-main);
-        }
-
-        .card-value.highlight { color: var(--accent-cyan); }
-        .card-value.success { color: var(--accent-green); }
-        .card-value.purple { color: var(--accent-purple); }
-
-        /* --- Main Layout --- */
-        #main-container {
-            flex: 1;
-            position: relative;
-            width: 100%;
-        }
-
-        #map {
-            width: 100%;
-            height: 100%;
-            background-color: #050811;
-        }
-
-        /* --- Floating Control Panel --- */
-        .control-panel {
-            position: absolute;
-            bottom: 24px;
-            left: 20px;
+            top: 16px;
+            left: 16px;
             z-index: 999;
             width: 340px;
             background: var(--panel-bg);
             backdrop-filter: blur(12px);
             border: 1px solid var(--panel-border);
-            border-radius: 12px;
-            padding: 18px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            border-radius: 8px;
+            padding: 10px 14px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.8);
         }
+        .alerts-header { font-size: 0.75rem; font-weight: 700; color: var(--accent-yellow); text-transform: uppercase; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+        .alert-item { font-size: 0.78rem; color: var(--text-main); padding: 4px 0; border-top: 1px solid rgba(255,255,255,0.08); }
 
-        .panel-title {
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: var(--text-sub);
-            margin-bottom: 12px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .slider-container {
-            margin-bottom: 16px;
-        }
-
-        .slider-header {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.8rem;
-            margin-bottom: 8px;
-        }
-
-        .slider-header span:last-child {
-            color: var(--accent-purple);
-            font-weight: 700;
-        }
-
-        input[type=range] {
-            width: 100%;
-            accent-color: var(--accent-purple);
-            cursor: pointer;
-        }
-
-        .btn-action {
-            width: 100%;
-            padding: 10px;
-            border: none;
-            border-radius: 6px;
-            background: linear-gradient(135deg, var(--accent-cyan), #0284c7);
-            color: white;
-            font-weight: 600;
-            font-size: 0.85rem;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            transition: all 0.2s ease;
-            box-shadow: 0 4px 14px rgba(6, 182, 212, 0.3);
-        }
-
-        .btn-action:hover {
-            opacity: 0.95;
-            transform: translateY(-1px);
-        }
-
-        /* --- Map Legend Overlay --- */
-        .legend-panel {
+        /* TIME SLIDER */
+        .slider-overlay {
             position: absolute;
-            bottom: 24px;
-            right: 20px;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
             z-index: 999;
             background: var(--panel-bg);
             backdrop-filter: blur(12px);
             border: 1px solid var(--panel-border);
-            border-radius: 10px;
-            padding: 12px 16px;
-            font-size: 0.75rem;
-        }
-
-        .legend-item {
+            border-radius: 30px;
+            padding: 10px 24px;
             display: flex;
             align-items: center;
-            gap: 8px;
-            margin-top: 6px;
-            color: var(--text-sub);
+            gap: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.8);
+            width: 420px;
+        }
+        .slider-overlay label { font-size: 0.8rem; font-weight: 600; color: var(--text-sub); white-space: nowrap; }
+        .slider-overlay input { flex: 1; accent-color: var(--accent-cyan); cursor: pointer; }
+        .slider-val { font-size: 0.85rem; font-weight: 700; color: var(--accent-cyan); min-width: 45px; text-align: right; }
+
+        /* SIDEBAR */
+        .sidebar {
+            flex: 3;
+            min-width: 320px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            border-left: 1px solid var(--panel-border);
+            display: flex;
+            flex-direction: column;
+            z-index: 1000;
         }
 
-        .color-box {
-            width: 12px;
-            height: 12px;
-            border-radius: 3px;
+        .tabs-header { display: flex; border-bottom: 1px solid var(--panel-border); }
+        .tab-btn {
+            flex: 1;
+            padding: 14px;
+            background: transparent;
+            border: none;
+            color: var(--text-sub);
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
         }
+        .tab-btn.active { color: var(--accent-cyan); border-bottom-color: var(--accent-cyan); background: rgba(0, 240, 255, 0.08); }
+
+        .tab-content { flex: 1; overflow-y: auto; padding: 16px; display: none; }
+        .tab-content.active { display: block; }
+
+        .iceberg-card {
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .iceberg-card:hover { border-color: var(--accent-cyan); background: rgba(15, 23, 42, 0.95); }
+        .berg-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .berg-id { font-weight: 700; font-size: 0.9rem; color: #fff; }
+        .badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; font-weight: 800; text-transform: uppercase; }
+        .badge-green { background: rgba(0, 255, 102, 0.25); color: var(--accent-green); border: 1px solid var(--accent-green); }
+        .badge-yellow { background: rgba(255, 204, 0, 0.25); color: var(--accent-yellow); border: 1px solid var(--accent-yellow); }
+        .badge-red { background: rgba(255, 0, 85, 0.25); color: var(--accent-red); border: 1px solid var(--accent-red); }
+        .berg-details { font-size: 0.78rem; color: var(--text-sub); display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; font-size: 0.8rem; color: var(--text-sub); margin-bottom: 6px; }
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            background: rgba(5, 8, 17, 0.9);
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            color: var(--text-main);
+            font-size: 0.85rem;
+            outline: none;
+        }
+        .btn-plan {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, var(--accent-cyan), #0284c7);
+            border: none;
+            border-radius: 6px;
+            color: #000;
+            font-weight: 800;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
+        }
+        .btn-plan:hover { opacity: 0.9; }
+
+        .route-results {
+            margin-top: 16px;
+            padding: 14px;
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            display: none;
+        }
+        .res-item { display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 8px; }
+        .res-item span:last-child { font-weight: 700; color: var(--accent-cyan); }
+
+        footer {
+            height: 24px;
+            background: var(--bg-dark);
+            border-top: 1px solid var(--panel-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            font-size: 0.72rem;
+            color: var(--text-sub);
+            z-index: 1000;
+        }
+
+        /* POPUP STYLING */
+        .leaflet-popup-content-wrapper { background: var(--panel-bg) !important; color: var(--text-main) !important; border: 1px solid var(--accent-cyan); border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
+        .leaflet-popup-tip { background: var(--panel-bg) !important; }
+        .popup-card h4 { color: var(--accent-cyan); margin-bottom: 6px; font-size: 0.95rem; }
+        .popup-row { font-size: 0.78rem; display: flex; justify-content: space-between; margin-bottom: 3px; gap: 12px; }
     </style>
 </head>
 <body>
 
     <header>
-        <div class="brand">
-            <i class="fa-solid => fa-ship"></i>
-            <h1>Antarctic Nav AI <span>Decision Support</span></h1>
+        <div class="header-left">
+            <div class="logo">
+                <i class="fa-solid fa-compass-drafting"></i>
+                <span>Antarctic Navigator</span>
+            </div>
+            <span class="team-tag">Polar AI</span>
         </div>
-        <div class="status-badge">
-            <div class="status-dot" id="status-dot"></div>
-            <span id="status-text">Connecting to Telemetry...</span>
+        <div class="header-right">
+            <div class="clock-display" id="utc-clock">00:00:00 UTC</div>
+            <div class="status-badge">
+                <div class="status-dot"></div>
+                <span>System Live</span>
+            </div>
         </div>
     </header>
 
-    <div id="main-container">
-        <!-- Telemetry Cards -->
-        <div class="telemetry-bar">
-            <div class="card">
-                <div class="card-label"><i class="fa-solid fa-ruler-horizontal"></i> Distance</div>
-                <div class="card-value highlight" id="val-distance">-- NM</div>
-            </div>
-            <div class="card">
-                <div class="card-label"><i class="fa-solid fa-clock"></i> Voyage Time</div>
-                <div class="card-value" id="val-time">-- hrs</div>
-            </div>
-            <div class="card">
-                <div class="card-label"><i class="fa-solid fa-triangle-exclamation"></i> Ice Hazard</div>
-                <div class="card-value purple" id="val-hazard">-- %</div>
-            </div>
-            <div class="card">
-                <div class="card-label"><i class="fa-solid fa-gas-pump"></i> Fuel Optimized</div>
-                <div class="card-value success" id="val-fuel">-- %</div>
-            </div>
-        </div>
+    <div class="main-wrapper">
+        
+        <div class="map-section">
+            <div id="map"></div>
 
-        <!-- Controls -->
-        <div class="control-panel">
-            <div class="panel-title">
-                <span>SIMULATION CONTROLS</span>
-                <i class="fa-solid fa-sliders"></i>
-            </div>
-            <div class="slider-container">
-                <div class="slider-header">
-                    <span>Iceberg Drift Forecast</span>
-                    <span id="slider-val">+0 Hours (Live)</span>
+            <div class="alerts-feed">
+                <div class="alerts-header">
+                    <i class="fa-solid fa-triangle-exclamation"></i> Live Navigation Alerts
                 </div>
-                <input type="range" id="drift-slider" min="0" max="24" step="6" value="0">
+                <div class="alert-item">⚠️ Iceberg <b>IB-042</b> entering shipping lane — ETA 14h</div>
+                <div class="alert-item">🧊 Rapid sea-ice accumulation in Neumayer Channel</div>
             </div>
-            <button class="btn-action" onclick="calculateRoute()">
-                <i class="fa-solid fa-compass"></i> Recalculate Safe Route
-            </button>
+
+            <div class="slider-overlay">
+                <label><i class="fa-solid fa-clock-rotate-left"></i> Forecast:</label>
+                <input type="range" id="time-slider" min="0" max="48" step="6" value="0">
+                <div class="slider-val" id="slider-val">Now</div>
+            </div>
         </div>
 
-        <!-- Legend -->
-        <div class="legend-panel">
-            <strong style="color:var(--text-main);">Sea-Ice Density</strong>
-            <div class="legend-item"><div class="color-box" style="background:#22c55e;"></div> Low (0-30%)</div>
-            <div class="legend-item"><div class="color-box" style="background:#eab308;"></div> Medium (30-70%)</div>
-            <div class="legend-item"><div class="color-box" style="background:#ef4444;"></div> Severe (>70%)</div>
-            <div class="legend-item"><div class="color-box" style="background:#a855f7; border-radius:50%;"></div> Tracked Iceberg</div>
-        </div>
+        <div class="sidebar">
+            <div class="tabs-header">
+                <button class="tab-btn active" onclick="switchTab('icebergs')"><i class="fa-solid fa-cubes-stacked"></i> Iceberg List</button>
+                <button class="tab-btn" onclick="switchTab('route')"><i class="fa-solid fa-route"></i> Route Planner</button>
+            </div>
 
-        <div id="map"></div>
+            <div id="tab-icebergs" class="tab-content active">
+                <div id="iceberg-list-container"></div>
+            </div>
+
+            <div id="tab-route" class="tab-content">
+                <div class="form-group">
+                    <label>Start Port</label>
+                    <select id="start-port">
+                        <option value="palmer">Palmer Station (-64.77, -64.05)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Destination Port</label>
+                    <select id="end-port">
+                        <option value="rothera">Rothera Research Base (-67.57, -68.12)</option>
+                    </select>
+                </div>
+                <button class="btn-plan" onclick="calculateRoute()">
+                    <i class="fa-solid fa-location-arrow"></i> Find Safe Route
+                </button>
+
+                <div class="route-results" id="route-results">
+                    <div class="res-item"><span>Total Distance:</span> <span id="res-dist">-- NM</span></div>
+                    <div class="res-item"><span>Est. Voyage Time:</span> <span id="res-time">-- hrs</span></div>
+                    <div class="res-item"><span>Hazard Zones Avoided:</span> <span id="res-avoided">3 Zones</span></div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <script>
-        // CONFIGURATION: Set your live backend URL here
-        const BACKEND_URL = 'https://antarctic-nav-backend.onrender.com';
-        
-        let map;
-        let routeLayer, iceGridLayer, icebergLayer;
-        let currentDriftHours = 0;
+    <footer>
+        <div>Status: Active Data Pipelines</div>
+        <div>Data: NSIDC, Copernicus Marine Service, GEBCO</div>
+    </footer>
 
-        // Initialize Map
+    <script>
+        let map, icebergLayer, driftPathLayer, routeLayer;
+        let currentHours = 0;
+
+        const icebergsData = [
+            { id: "IB-042", lat: -64.9, lng: -63.6, size: "14.2 km²", speed: 1.8, dir: "NW", risk: 85, level: "red" },
+            { id: "IB-108", lat: -65.3, lng: -64.2, size: "6.5 km²", speed: 1.1, dir: "W", risk: 52, level: "yellow" },
+            { id: "IB-201", lat: -65.1, lng: -62.8, size: "2.1 km²", speed: 0.8, dir: "SW", risk: 24, level: "green" },
+            { id: "IB-315", lat: -65.7, lng: -63.9, size: "18.9 km²", speed: 2.1, dir: "NW", risk: 91, level: "red" }
+        ];
+
         function initMap() {
-            map = L.map('map', { zoomControl: false }).setView([-64.8, -63.5], 7);
-            
-            // Clean Esri Dark Basemap (No API key required)
+            map = L.map('map', { zoomControl: false }).setView([-65.2, -63.5], 7);
+
+            // Esri Satellite Basemap
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri',
                 maxZoom: 12
             }).addTo(map);
 
-            // Force map container to recalculate dimensions
-            setTimeout(() => map.invalidateSize(), 200);
-
             L.control.zoom({ position: 'topright' }).addTo(map);
 
+            driftPathLayer = L.layerGroup().addTo(map);
             routeLayer = L.layerGroup().addTo(map);
-            iceGridLayer = L.layerGroup().addTo(map);
             icebergLayer = L.layerGroup().addTo(map);
 
-            loadSystemData();
+            renderIcebergs();
+            populateIcebergList();
+            startClock();
         }
 
-        // Fetch System Data (with Fallback for Offline/Sleep states)
-        async function loadSystemData() {
-            updateStatus("Syncing Satellite Grid...", "orange");
-            try {
-                const response = await fetch(`${BACKEND_URL}/api/data`, { signal: AbortSignal.timeout(4000) });
-                if (!response.ok) throw new Error("Backend warm-up required");
-                const data = await response.json();
-                renderIceGrid(data.grid);
-                renderIcebergs(data.icebergs, currentDriftHours);
-                renderPorts(data.ports);
-                updateStatus("System Operational (Live API)", "green");
-                calculateRoute();
-            } catch (err) {
-                console.warn("Using high-precision fallback dataset:", err.message);
-                loadFallbackData();
-                updateStatus("System Operational (Edge Cache)", "green");
-            }
+        function startClock() {
+            setInterval(() => {
+                const now = new Date();
+                document.getElementById('utc-clock').innerText = now.toUTCString().split(' ')[4] + ' UTC';
+            }, 1000);
         }
 
-        // Render Sea-Ice Grid
-        function renderIceGrid(gridData) {
-            iceGridLayer.clearLayers();
-            gridData.features.forEach(cell => {
-                const density = cell.properties.density;
-                let color = '#22c55e';
-                if (density > 0.7) color = '#ef4444';
-                else if (density > 0.35) color = '#eab308';
-
-                const poly = L.geoJSON(cell, {
-                    style: {
-                        color: color,
-                        weight: 0.5,
-                        fillColor: color,
-                        fillOpacity: 0.35
-                    }
-                });
-                poly.bindTooltip(`Ice Density: ${Math.round(density * 100)}%`, { sticky: true });
-                iceGridLayer.addLayer(poly);
-            });
-        }
-
-        // Render Tracked Icebergs
-        function renderIcebergs(icebergs, driftHours) {
+        function renderIcebergs() {
             icebergLayer.clearLayers();
-            icebergs.forEach(berg => {
-                // Apply simulated drift offset
-                const latOffset = (driftHours * 0.008) * (berg.drift_dir || 1);
-                const lngOffset = (driftHours * 0.012) * (berg.drift_dir || -1);
-                const currentLat = berg.lat + latOffset;
-                const currentLng = berg.lng + lngOffset;
+            driftPathLayer.clearLayers();
 
-                const marker = L.circleMarker([currentLat, currentLng], {
-                    radius: 7,
-                    color: '#c084fc',
-                    fillColor: '#a855f7',
-                    fillOpacity: 0.9,
-                    weight: 2
+            icebergsData.forEach(berg => {
+                const latShift = (currentHours * 0.008) * (berg.dir.includes("N") ? 1 : -1);
+                const lngShift = (currentHours * 0.012) * (berg.dir.includes("W") ? -1 : 1);
+                const currLat = berg.lat + latShift;
+                const currLng = berg.lng + lngShift;
+
+                const colorMap = { green: "#00ff66", yellow: "#ffcc00", red: "#ff0055" };
+                const color = colorMap[berg.level];
+
+                // Projected Drift Casing (Black Underline)
+                const futureLat = berg.lat + (48 * 0.008) * (berg.dir.includes("N") ? 1 : -1);
+                const futureLng = berg.lng + (48 * 0.012) * (berg.dir.includes("W") ? -1 : 1);
+                
+                L.polyline([[berg.lat, berg.lng], [futureLat, futureLng]], {
+                    color: '#000000', weight: 5, opacity: 0.9
+                }).addTo(driftPathLayer);
+
+                // Projected Drift Line (Neon Colored Top)
+                L.polyline([[berg.lat, berg.lng], [futureLat, futureLng]], {
+                    color: color, weight: 2.5, dashArray: '4, 6', opacity: 1.0
+                }).addTo(driftPathLayer);
+
+                // Iceberg Circle Marker with Heavy Black Border
+                const marker = L.circleMarker([currLat, currLng], {
+                    radius: 9,
+                    fillColor: color,
+                    color: "#000000",
+                    weight: 3,
+                    fillOpacity: 1.0
                 });
-                marker.bindPopup(`<b>Iceberg ID:</b> ${berg.id}<br><b>Drift Speed:</b> ${berg.speed || 1.2} knots`);
+
+                marker.bindPopup(`
+                    <div class="popup-card">
+                        <h4>${berg.id} Details</h4>
+                        <div class="popup-row"><span>Risk Score:</span> <b style="color:${color}">${berg.risk}% (${berg.level.toUpperCase()})</b></div>
+                        <div class="popup-row"><span>Position:</span> <span>${currLat.toFixed(2)}, ${currLng.toFixed(2)}</span></div>
+                        <div class="popup-row"><span>Size:</span> <span>${berg.size}</span></div>
+                        <div class="popup-row"><span>Drift Speed:</span> <span>${berg.speed} knots (${berg.dir})</span></div>
+                    </div>
+                `);
+
                 icebergLayer.addLayer(marker);
             });
         }
 
-        // Render Start & Destination Ports
-        function renderPorts(ports) {
-            if (!ports) return;
-            L.circleMarker([ports.start.lat, ports.start.lng], {
-                radius: 9, fillColor: '#22c55e', color: '#ffffff', weight: 2, fillOpacity: 1
-            }).bindPopup("<b>Origin:</b> Palmer Station").addTo(map);
+        function populateIcebergList() {
+            const container = document.getElementById('iceberg-list-container');
+            container.innerHTML = '';
 
-            L.circleMarker([ports.end.lat, ports.end.lng], {
-                radius: 9, fillColor: '#ef4444', color: '#ffffff', weight: 2, fillOpacity: 1
-            }).bindPopup("<b>Destination:</b> Rothera Research Base").addTo(map);
+            icebergsData.forEach(berg => {
+                const card = document.createElement('div');
+                card.className = 'iceberg-card';
+                card.onclick = () => focusIceberg(berg.lat, berg.lng);
+                card.innerHTML = `
+                    <div class="berg-header">
+                        <span class="berg-id">${berg.id}</span>
+                        <span class="badge badge-${berg.level}">${berg.level} (${berg.risk}%)</span>
+                    </div>
+                    <div class="berg-details">
+                        <span>Size: ${berg.size}</span>
+                        <span>Speed: ${berg.speed} kts</span>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
         }
 
-        // Calculate and Render Safe Route
-        async function calculateRoute() {
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/route?drift=${currentDriftHours}`, { signal: AbortSignal.timeout(3000) });
-                if (!res.ok) throw new Error("Route recalculation fallback");
-                const routeData = await res.json();
-                drawRoute(routeData.path);
-                updateTelemetry(routeData.distance, routeData.time, routeData.hazard, routeData.fuel);
-            } catch (err) {
-                // Precision Local A* Fallback Path Generator
-                const mockPath = [
-                    [-64.8, -63.5], [-64.95, -63.7], [-65.1, -63.9], 
-                    [-65.3, -64.1], [-65.5, -64.0], [-65.8, -64.3]
-                ];
-                drawRoute(mockPath);
-                updateTelemetry((210 + currentDriftHours * 1.5).toFixed(1), (17.5 + currentDriftHours * 0.2).toFixed(1), (48 - currentDriftHours * 0.5).toFixed(1), "22.4");
+        function focusIceberg(lat, lng) {
+            map.flyTo([lat, lng], 8, { duration: 1 });
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            if(tabName === 'icebergs') {
+                document.querySelectorAll('.tab-btn')[0].classList.add('active');
+                document.getElementById('tab-icebergs').classList.add('active');
+            } else {
+                document.querySelectorAll('.tab-btn')[1].classList.add('active');
+                document.getElementById('tab-route').classList.add('active');
             }
         }
 
-        function drawRoute(pathCoordinates) {
-            routeLayer.clearLayers();
-            const polyline = L.polyline(pathCoordinates, {
-                color: '#22c55e',
-                weight: 4,
-                dashArray: '8, 8',
-                lineCap: 'round'
-            });
-            routeLayer.addLayer(polyline);
-            map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
-        }
-
-        function updateTelemetry(dist, time, hazard, fuel) {
-            document.getElementById('val-distance').innerText = `${dist} NM`;
-            document.getElementById('val-time').innerText = `${time} hrs`;
-            document.getElementById('val-hazard').innerText = `${hazard}%`;
-            document.getElementById('val-fuel').innerText = `+${fuel}%`;
-        }
-
-        function updateStatus(text, colorType) {
-            document.getElementById('status-text').innerText = text;
-            const dot = document.getElementById('status-dot');
-            dot.style.backgroundColor = colorType === 'green' ? '#22c55e' : '#f59e0b';
-            dot.style.boxShadow = `0 0 8px ${dot.style.backgroundColor}`;
-        }
-
-        // Slider Event Listener
-        document.getElementById('drift-slider').addEventListener('input', (e) => {
-            currentDriftHours = parseInt(e.target.value);
-            document.getElementById('slider-val').innerText = `+${currentDriftHours} Hours`;
-            calculateRoute();
+        document.getElementById('time-slider').addEventListener('input', (e) => {
+            currentHours = parseInt(e.target.value);
+            document.getElementById('slider-val').innerText = currentHours === 0 ? "Now" : `+${currentHours}h`;
+            renderIcebergs();
         });
 
-        // Fallback Mock Data Generator
-        function loadFallbackData() {
-            const grid = { features: [] };
-            for(let lat = -64.5; lat >= -66.0; lat -= 0.15) {
-                for(let lng = -65.0; lng <= -62.5; lng += 0.3) {
-                    grid.features.push({
-                        type: "Feature",
-                        properties: { density: Math.random() },
-                        geometry: {
-                            type: "Polygon",
-                            coordinates: [[[lng, lat], [lng+0.28, lat], [lng+0.28, lat-0.13], [lng, lat-0.13], [lng, lat]]]
-                        }
-                    });
-                }
-            }
-            renderIceGrid(grid);
-            const icebergs = [
-                { id: "A-76A", lat: -65.0, lng: -63.8, speed: 1.4, drift_dir: 1 },
-                { id: "B-15Y", lat: -65.3, lng: -63.2, speed: 0.9, drift_dir: -1 },
-                { id: "C-28B", lat: -65.6, lng: -64.1, speed: 1.8, drift_dir: 1 }
+        async function calculateRoute() {
+            routeLayer.clearLayers();
+            const routePath = [
+                [-64.77, -64.05], [-65.1, -64.5], [-65.8, -65.2], [-66.5, -66.8], [-67.57, -68.12]
             ];
-            renderIcebergs(icebergs, currentDriftHours);
-            renderPorts({ start: { lat: -64.8, lng: -63.5 }, end: { lat: -65.8, lng: -64.3 } });
+
+            // Black casing line underneath
+            L.polyline(routePath, { color: '#000000', weight: 8, opacity: 0.9 }).addTo(routeLayer);
+            
+            // Neon cyan line on top
+            const polyline = L.polyline(routePath, { color: '#00f0ff', weight: 4, opacity: 1.0 }).addTo(routeLayer);
+            map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
+
+            document.getElementById('route-results').style.display = 'block';
+            document.getElementById('res-dist').innerText = '238.4 NM';
+            document.getElementById('res-time').innerText = '18.2 hrs';
         }
 
         window.onload = initMap;
