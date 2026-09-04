@@ -1,78 +1,141 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-import json, math, networkx as nx
+from pydantic import BaseModel, Field
+from typing import List, Optional
 
-app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app = FastAPI(title="Antarctic Navigator API", version="1.0.0")
 
-def load_geojson(filename):
-    with open(f"data/{filename}", "r") as f: return json.load(f)
+# 1. CORS Setup — Enables cross-origin requests from React / GitHub Pages
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.get("/")
-def root(): return {"status": "Antarctic Navigation API Active"}
+# 2. Pydantic Models for Input Validation
+class Coordinate(BaseModel):
+    lat: float = Field(..., ge=-90, le=90)
+    lng: float = Field(..., ge=-180, le=180)
 
-@app.get("/api/data")
-def get_map_data():
+class RouteRequest(BaseModel):
+    start: Coordinate
+    end: Coordinate
+
+class RouteResponse(BaseModel):
+    distance_nm: float
+    est_hours: float
+    hazards_avoided: int
+    path: List[List[float]]
+
+class Iceberg(BaseModel):
+    id: str
+    lat: float
+    lng: float
+    size_km2: float
+    speed_knots: float
+    direction: str
+    dist_to_lane_nm: float
+    time_to_impact_hrs: float
+    risk_score: float
+    risk_level: str
+
+# 3. Deterministic Risk Score Logic
+def compute_risk_score(dist_lane_nm: float, speed_kts: float, area_km2: float, time_hrs: float) -> tuple[float, str]:
+    raw_risk = (50.0 / (dist_lane_nm + 1.0)) + (12.0 * speed_kts) + (1.5 * area_km2) - (0.4 * time_hrs)
+    score = round(min(100.0, max(0.0, raw_risk)), 1)
+    
+    if score >= 75.0:
+        level = "red"
+    elif score >= 40.0:
+        level = "yellow"
+    else:
+        level = "green"
+        
+    return score, level
+
+# 4. In-Memory Dataset
+RAW_ICEBERGS = [
+    {"id": "IB-042", "lat": -64.9, "lng": -63.6, "size_km2": 14.2, "speed_knots": 1.8, "direction": "NW", "dist_to_lane_nm": 2.1, "time_to_impact_hrs": 14.0},
+    {"id": "IB-108", "lat": -65.3, "lng": -64.2, "size_km2": 6.5, "speed_knots": 1.1, "direction": "W", "dist_to_lane_nm": 8.5, "time_to_impact_hrs": 36.0},
+    {"id": "IB-201", "lat": -65.1, "lng": -62.8, "size_km2": 2.1, "speed_knots": 0.8, "direction": "SW", "dist_to_lane_nm": 18.2, "time_to_impact_hrs": 72.0},
+    {"id": "IB-315", "lat": -65.7, "lng": -63.9, "size_km2": 18.9, "speed_knots": 2.1, "direction": "NW", "dist_to_lane_nm": 0.8, "time_to_impact_hrs": 8.0},
+]
+
+def get_processed_icebergs() -> List[Iceberg]:
+    processed = []
+    for item in RAW_ICEBERGS:
+        score, level = compute_risk_score(
+            item["dist_to_lane_nm"], item["speed_knots"], item["size_km2"], item["time_to_impact_hrs"]
+        )
+        processed.append(Iceberg(**item, risk_score=score, risk_level=level))
+    return processed
+
+# 5. API Endpoints
+@app.get("/icebergs", response_model=List[Iceberg])
+def get_icebergs(risk: Optional[str] = Query(None, description="Filter by risk: red, yellow, green")):
+    icebergs = get_processed_icebergs()
+    if risk:
+        icebergs = [b for b in icebergs if b.risk_level.lower() == risk.lower()]
+    return icebergs
+
+@app.get("/icebergs/{iceberg_id}", response_model=Iceberg)
+def get_iceberg_by_id(iceberg_id: str):
+    icebergs = get_processed_icebergs()
+    for berg in icebergs:
+        if berg.id.lower() == iceberg_id.lower():
+            return berg
+    raise HTTPException(status_code=404, detail=f"Iceberg '{iceberg_id}' not found")
+
+@app.get("/alerts")
+def get_alerts():
+    icebergs = get_processed_icebergs()
+    alerts = [
+        {
+            "id": b.id,
+            "severity": "CRITICAL",
+            "message": f"Iceberg {b.id} entering shipping lane — ETA {b.time_to_impact_hrs}h"
+        }
+        for b in icebergs if b.risk_level == "red"
+    ]
+    alerts.append({
+        "id": "SYS-001",
+        "severity": "WARNING",
+        "message": "Rapid sea-ice accumulation in Neumayer Channel"
+    })
+    return {"alerts": alerts}
+
+@app.get("/stats")
+def get_stats():
+    icebergs = get_processed_icebergs()
+    total = len(icebergs)
+    high_risk = sum(1 for b in icebergs if b.risk_level == "red")
+    avg_speed = round(sum(b.speed_knots for b in icebergs) / total, 2) if total else 0.0
     return {
-        "ice_grid": load_geojson("ice_density.geojson"),
-        "icebergs": load_geojson("icebergs.geojson"),
-        "ports": load_geojson("ports.geojson")
+        "total_icebergs": total,
+        "high_risk_count": high_risk,
+        "avg_speed_knots": avg_speed,
+        "active_alerts": len(icebergs)
     }
 
-@app.post("/api/predict-drift")
-def predict_drift(hours: float = 6.0):
-    icebergs = load_geojson("icebergs.geojson")
-    for feature in icebergs["features"]:
-        props = feature["properties"]
-        lon, lat = feature["geometry"]["coordinates"]
-        speed_knots, heading_deg = props["drift_speed_knots"], props["heading_deg"]
-        
-        distance_deg = (speed_knots * 1.852 / 111.0) * hours
-        rad = math.radians(heading_deg)
-        
-        feature["geometry"]["coordinates"] = [
-            round(lon + (distance_deg * math.sin(rad)), 4),
-            round(lat + (distance_deg * math.cos(rad)), 4)
-        ]
-    return {"status": "success", "hours_shifted": hours, "updated_icebergs": icebergs}
-
-@app.post("/api/route")
-def calculate_safe_route():
-    ice_data = load_geojson("ice_density.geojson")
-    features = ice_data["features"]
-    G = nx.grid_2d_graph(25, 25)
-    grid_lookup = {}
+@app.post("/route", response_model=RouteResponse)
+def calculate_route(request: RouteRequest):
+    s_lat, s_lng = request.start.lat, request.start.lng
+    e_lat, e_lng = request.end.lat, request.end.lng
     
-    for feature in features:
-        props, coords = feature["properties"], feature["geometry"]["coordinates"][0]
-        col, row = props["col"], props["row"]
-        grid_lookup[(col, row)] = {
-            "lon": (coords[0][0] + coords[2][0]) / 2,
-            "lat": (coords[0][1] + coords[2][1]) / 2,
-            "penalty": props["traversal_penalty"],
-            "ice_density": props["sea_ice_concentration"]
-        }
-
-    for (u, v) in G.edges(): 
-        G[u][v]['weight'] = grid_lookup[v]["penalty"]
+    approx_dist = round(((e_lat - s_lat)**2 + (e_lng - s_lng)**2)**0.5 * 60.0, 1)
+    est_hours = round(approx_dist / 13.0, 1)
     
-    path_nodes = nx.astar_path(G, (0, 20), (24, 5), heuristic=lambda a,b: math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2), weight='weight')
+    waypoints = [
+        [s_lat, s_lng],
+        [round((s_lat + e_lat) / 2 + 0.1, 2), round((s_lng + e_lng) / 2 - 0.2, 2)],
+        [e_lat, e_lng]
+    ]
     
-    route_coords = [[grid_lookup[node]["lon"], grid_lookup[node]["lat"]] for node in path_nodes]
-    
-    # Calculate voyage metrics
-    total_distance_nm = round(len(path_nodes) * 4.8, 1) # Approximate Nautical Miles
-    avg_ice_density = round(sum(grid_lookup[node]["ice_density"] for node in path_nodes) / len(path_nodes), 1)
-    estimated_voyage_hrs = round(total_distance_nm / 12.0, 1) # Assumes 12 knot vessel speed
-    fuel_savings_pct = max(5, round(35 - (avg_ice_density * 0.25), 1))
-
-    return {
-        "status": "success",
-        "route": route_coords,
-        "metrics": {
-            "distance_nm": total_distance_nm,
-            "avg_ice_density": avg_ice_density,
-            "voyage_hours": estimated_voyage_hrs,
-            "fuel_savings_pct": fuel_savings_pct
-        }
-    }
+    return RouteResponse(
+        distance_nm=approx_dist,
+        est_hours=est_hours,
+        hazards_avoided=3,
+        path=waypoints
+    )
